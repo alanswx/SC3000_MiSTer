@@ -1,0 +1,47 @@
+# name	cart (relative to verilator/)	extra args	frames	expect: crc:XXXXXXXX (last frame) | text:STRING (on screen at the end)
+# Golden CRCs are the simulator's own output, reviewed by eye (out/batch/sheet600.png, 2026-11-18).
+# Empty args = '-'. Rows whose cart file is missing are SKIPped (commercial ROMs live only in software/INCOMING).
+asteroids3d	../software/tests/smspower_EliteAsteroids3D-SG/_extracted/Asteroids3d.sg	-	600	crc:9CFFD52D
+battlot	../software/homebrew/smspower_Battlot-SG/_extracted/battlot.sg	-	600	crc:60E96B97
+bloktris	../software/homebrew/smspower_Bloktris-SG/_extracted/Bloktris.sg	-	600	crc:D8E78413
+cheman	../software/homebrew/smspower_CheMan-SG/_extracted/che_man_ntsc.sg	-	600	crc:A84801DC
+climber	../software/homebrew/smspower_ClimberGame-SG/_extracted/climber-sg1000.sg	-	600	crc:3C95009A
+lines	../software/tests/smspower_Lines-SG/_extracted/Lines.sg	-	600	crc:766995E2
+superuwol	../software/homebrew/smspower_SuperUwol-SG/_extracted/mojon-twins--super-uwol.sg	-	600	crc:39EE71BB
+monkeymoon	../software/homebrew/smspower_MonkeyMoon-SG/_extracted/Monkey Moon.sg	-	600	crc:4D8D61AA
+road3d	../software/homebrew/smspower_Road3D-SG/_extracted/Road3D.sg	-	600	crc:E7884E72
+sndtest	../software/tests/smspower_SG1000SoundTestCV-SG/_extracted/SG1000Sndtest.sg	-	600	crc:83583CEF
+solarian	../software/homebrew/smspower_SolarianGame-SG/_extracted/shoot-sg1000.sg	-	600	crc:A6B919DB
+skazka	../software/homebrew/smspower_Skazka-SC/_extracted/Skazka.sc	-	600	crc:F4212676
+skyfox	../software/homebrew/smspower_Skyfox-SC/_extracted/Skyfox.sc	-	600	crc:8FF9516D
+sn76489test	../software/tests/smspower_SN76489TestRom-SG/_extracted/SN76489_TestRom_NTSC.sg	-	600	crc:0BD42662
+vexed	../software/homebrew/smspower_Vexed-SG/_extracted/Vexed.sg	-	600	crc:31BE31DE
+crosschase	../software/homebrew/smspower_Xchase-SG/_extracted/Xchase_sg1000.sg	-	600	crc:5EF3EDE1
+basic3e_ready	../software/INCOMING/basic3/basic3e/basic3e.bin	-	400	text:26620 Bytes free
+basic3e_run	../software/INCOMING/basic3/basic3e/basic3e.bin	--type 10_FOR_I=1_TO_5:PRINT_I*I;:NEXT\nRUN\n@400	800	text:1 4 9 16 25
+# commercial carts (software/INCOMING, from the MAME software lists; auto mapper)
+castle	../software/INCOMING/castle/mpr-10159.ic1	-	600	crc:085EE1D9
+othello	../software/INCOMING/othello/othello (japan).bin	-	600	crc:5B05DB3A
+m2cp	../software/INCOMING/m2cp/sg-1000 m2 check program.bin	-	600	crc:73033DE8
+champtns	../software/INCOMING/champtns/mpr-5439.ic1	-	600	crc:9D0F107E
+congo	../software/INCOMING/congo/congo bongo [v1].bin	-	600	crc:C737E56B
+homemj	../software/INCOMING/homemj/home mahjong (japan) (v1.1).bin	-	600	crc:F3F4442E
+bordrlin	../software/INCOMING/bordrlin/borderline (japan, europe).bin	-	600	crc:10ED202F
+basic2_ready	../software/INCOMING/basic2/basic2.bin	-	400	text:2043 Bytes free
+# SF-7000 (cart column '-': no cartridge). IPL = MAME sf7000 ipl.rom; MAME shows 18669 bytes free
+sf7000_basic	-	--sf7000 ../software/INCOMING/sf7000/ipl.rom --disk ../software/INCOMING/sf7basic10.sf7	1000	text:18669 Bytes free
+sf7000_files	-	--sf7000 ../software/INCOMING/sf7000/ipl.rom --disk ../software/INCOMING/sf7basic10.sf7 --type FILES\n@1000	1300	text:"MULTIFIL.BAS"
+# tape (slow: ~4 min): BASIC Level III LOAD from a WAV, virtual motor
+tape_voltron	../software/INCOMING/basic3j.sg	--tape ../software/INCOMING/voltron.wav --type LOAD\n@400	3300	text:* Loading end
+# phase 3 mappers (MAME software lists; detected by CRC)
+map_terebioe	../software/INCOMING/m_terebioe.bin	-	700	crc:23AB2F3A
+map_bombmnsp	../software/INCOMING/m_bombmnsp.bin	-	700	crc:230E38A8
+map_yingchua	../software/INCOMING/m_yingchua.bin	-	700	crc:15620151
+map_music	../software/INCOMING/m_music.bin	-	700	crc:2E503E58
+map_multcart	../software/INCOMING/m_multcart.bin	-	700	crc:DCD77EAC
+map_megacart	../software/INCOMING/m_megacart.bin	-	700	crc:4B0869D3
+multcart_basic	../software/INCOMING/m_multcart.bin	--key down@900:6 --key enter@1000:6	1700	text:26620 Bytes free
+megacart_basic	../software/INCOMING/m_megacart.bin	--key down@900:6 --key enter@1000:6	1700	text:26620 Bytes free
+tape_voltron_4x	../software/INCOMING/basic3j.sg	--tape ../software/INCOMING/voltron.wav --turbo --type LOAD\n@400	1300	text:* Loading end
+omv_title	-	--omv ../software/INCOMING/omv/omvbios.bin	300	crc:9D036364
+omv_move	-	--omv ../software/INCOMING/omv/omvbios.bin --pad 1@320:5 --joy b@500:5 --pad D@700:5 --pad 3@760:5 --joy a@820:5	1000	crc:06327A1E

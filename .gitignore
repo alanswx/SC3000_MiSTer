@@ -1,0 +1,33 @@
+# third-party material kept locally only: ROMs, software, manuals, MAME/emulator sources
+software/
+refs/
+docs/
+
+# simulator build and run output
+verilator/obj*/
+verilator/out*/
+verilator/tests/out/
+verilator/tests/kbd/obj/
+verilator/*.png
+verilator/*.wav
+
+# Quartus output (builds run on another machine)
+db/
+incremental_db/
+output_files/
+greybox_tmp/
+*.qws
+*.rpt
+build.out
+
+# releases: only the newest RBF is kept in git
+releases/SC3000_20261118[a-k].rbf
+
+# recordings (game audio, emulator captures)
+hwtest/**/*.wav
+hwtest/*.wav
+
+.DS_Store
+
+# MAME snapshots from comparison runs
+verilator/snap/
