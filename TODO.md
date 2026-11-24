@@ -70,7 +70,24 @@
         (own uPD765A subset for raw .sf7; MiSTer's u765 is DSK-only)
   - [x] sim: Disk BASIC 1.0p boots (18669 bytes free = MAME), FILES, SAVE + LOAD round trip
   - [x] OSD: SF-7000 disk (S0), Load ROM = IPL (boot0.rom), SF-7000 Auto/On/Off
-  - [ ] 8251 USART (stub now), Centronics printer, FORMAT tested, other disks (basic11, logo, games)
+  - [x] 8251 USART (`rtl/sf7000_usart.sv`, async; TxC/RxC = 4.9152 MHz / (32 << jumper) as MAME) on the
+        MiSTer UART, OSD baud row (9600-300). Sim: harness UART (--serial-in / --serial-out / --serial-fmt):
+        COMSAVE (1.0p 8E2, 1.1p COMSET 7,O -> 7O2) and COMLOAD exact. Disk BASIC 1.0p's COMSET skips the
+        8251 reset (jr to 1FB3 past the 00 00 00 40 at 1FA6; 75D3 is the error handler), so its mode byte
+        lands as a command with IR set and the 8251 (MAME i8251 too) stops sending: fixed in 1.1p (jr to
+        1FA6); test sf7000_comset10 keeps that behaviour
+  - [x] Centronics printer -> file on VD 2 (`rtl/sf7000_printer.sv`, OSD "SF-7000 printer", blank
+        releases/sf7000_printer_256k.prn). Disk BASIC picks it with CONSOLE ,,,,2 (flag AF6E; default is the
+        SC-3000's SP-400). Strobes > 100 us ignored (the 8255 mode set holds PC7 low until the first print)
+  - [x] FORMAT: IPL UTILITY / F on a blank image (sim --swap), then Disk BASIC FILES (156K free), SAVE,
+        LOAD, RUN on it. Other disks: basic11 (1.1p), basicf (YENO demo) boot; DEMO #1-3, FUZI, YENODEMO run.
+        No other .sf7 images here (games, Logo): to try when available
+  - [x] build n (md5 2e0f0d72…, 30% ALMs, 51% RAM blocks, core clock +7.35 ns): the printer and tape-save
+        sector buffers were registers (the space-padding mux sat inside the registered RAM read: 3.6k + 2.1k
+        ALMs); registered read + mux after it puts them in block RAM. Regression 40/40, tape round trip,
+        tests/sf7000_io.sh 6/6
+  - [ ] hardware: printer file + RS-232 on mister126 (stty/cat on /dev/ttyS1 is the far end), not run:
+        mister126 was busy with P2000T tests
 - [ ] Phase 7: hardware test (user go-ahead)
 
 ## After 1.0

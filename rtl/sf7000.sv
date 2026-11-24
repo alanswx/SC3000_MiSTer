@@ -9,7 +9,8 @@
 //           E4-E7 8255: PA0 FDC INT, PA1 printer BUSY, PA2 FDD INDEX;
 //                       PB printer data; PC0 /IN USE, PC1 /MOTOR ON, PC2 TC,
 //                       PC3 FDC RESET, PC5 FDC READY, PC6 /ROM SEL, PC7 /STROBE
-//           E8-E9 8251 USART (stub: transmitter always empty, no receive)
+//           E8-E9 8251 USART (sf7000_usart.sv, async) -> RS-232 (MiSTer UART)
+//   Printer PB + PC7 /STROBE + PA1 BUSY -> a file (sf7000_printer.sv)
 //   Decode: A7:A4 = 1110 (MAME only checks A4 = 0; docs: E0-EF).
 //-----------------------------------------------------------------------------
 
@@ -51,6 +52,27 @@ module sf7000 #(
   output       [7:0]  sd_buff_din,
   input               sd_buff_wr,
 
+  // RS-232 (8251); baud = jumper 1-6 - 1 (9600 ... 300)
+  input        [2:0]  baud,
+  output              uart_txd,
+  input               uart_rxd,
+  input               uart_cts_n,
+  input               uart_dsr_n,
+  output              uart_rts_n,
+  output              uart_dtr_n,
+
+  // printer file (hps_io SD)
+  input               prn_img_mounted,
+  input               prn_img_readonly,
+  input        [63:0] prn_img_size,
+  output       [31:0] prn_sd_lba,
+  output              prn_sd_wr,
+  input               prn_sd_ack,
+  input        [8:0]  prn_sd_buff_addr,
+  output       [7:0]  prn_sd_buff_din,
+  output              prn_active,
+  output       [24:0] prn_length,
+
   output              motor_led
 );
 
@@ -74,16 +96,16 @@ module sf7000 #(
   wire       ppi_cs = io_sel & (a[3:2] == 2'b01);
   wire       fdc_cs = io_sel & (a[3:2] == 2'b00);
   wire       usart_cs = io_sel & (a[3:2] == 2'b10);
-  wire [7:0] ppi_q, pc;
-  wire       fdc_int;
+  wire [7:0] ppi_q, pc, pb;
+  wire       fdc_int, prn_busy;
 
   jt8255 ppi (
     .rst(reset), .clk(clk),
     .addr(a[1:0]), .din(d_i), .dout(ppi_q),
     .rdn(~io_rd), .wrn(~io_wr), .csn(~ppi_cs),
-    .porta_din({5'b00000, index, 1'b0, fdc_int}),
+    .porta_din({5'b00000, index, prn_busy, fdc_int}),
     .portb_din(8'hFF), .portc_din(8'hFF),
-    .porta_dout(), .portb_dout(), .portc_dout(pc));
+    .porta_dout(), .portb_dout(pb), .portc_dout(pc));
 
   // Port C upper half is an input after reset (8255 reset state): the pins
   // float and /ROM SEL reads low, so the IPL is mapped (MAME tri_pc = 8Fh).
@@ -128,9 +150,21 @@ module sf7000 #(
 
   assign motor_led = enable & motor_on;
 
-  // ---------------------------------------------------------------- USART stub
-  // status: TxRDY (0), TxE (2), DSR (7) off; data reads FF
-  wire [7:0] usart_q = a[0] ? 8'h05 : 8'hFF;
+  // ---------------------------------------------------------------- USART
+  wire [7:0] usart_q;
+  sf7000_usart #(.CLK_HZ(CLK_HZ)) usart (
+    .clk(clk), .reset(reset | ~enable), .baud(baud),
+    .cs(usart_cs), .a0(a[0]), .rd(io_rd), .wr(io_wr), .din(d_i), .dout(usart_q),
+    .txd(uart_txd), .rxd(uart_rxd), .cts_n(uart_cts_n), .dsr_n(uart_dsr_n),
+    .rts_n(uart_rts_n), .dtr_n(uart_dtr_n));
+
+  // ---------------------------------------------------------------- printer
+  // /STROBE = PC7 while the upper half of port C is an output (else floats high)
+  sf7000_printer #(.CLK_HZ(CLK_HZ)) printer (
+    .clk(clk), .reset(reset), .strobe_n(~(enable & c_hi_out) | pc[7]), .data(pb), .busy(prn_busy),
+    .img_mounted(prn_img_mounted), .img_readonly(prn_img_readonly), .img_size(prn_img_size),
+    .sd_lba(prn_sd_lba), .sd_wr(prn_sd_wr), .sd_ack(prn_sd_ack), .sd_buff_addr(prn_sd_buff_addr),
+    .sd_buff_din(prn_sd_buff_din), .active(prn_active), .length(prn_length));
 
   assign io_en  = io_sel & (ppi_cs | fdc_cs | usart_cs);
   assign io_d_o = ppi_cs ? ppi_q : fdc_cs ? fdc_q : usart_q;

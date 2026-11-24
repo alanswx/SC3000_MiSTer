@@ -15,7 +15,7 @@ SF-7000 disks.
 | Sound | SN76489AN (jt89, with the SN76489AN noise generator) |
 | I/O | 8255 PPI: keyboard, joysticks, cassette, printer port |
 | RAM | 2 KB (SG-1000: 1 KB), plus what the cartridge brings |
-| SF-7000 | 64 KB RAM, IPL ROM, uPD765A floppy controller, 3" drive (160 KB) |
+| SF-7000 | 64 KB RAM, IPL ROM, uPD765A floppy controller, 3" drive (160 KB), 8251 RS-232 (MiSTer UART), Centronics printer (to a file) |
 
 ## Files
 
@@ -30,7 +30,7 @@ cartridge. BASIC is a cartridge too (BASIC Level III is the usual one).
 
 ## OSD
 
-Top page: **Cartridge**, **Tape**, **Tape save**, **SF-7000 disk**, **Load ROM** (the
+Top page: **Cartridge**, **Tape**, **Tape save**, **SF-7000 disk**, **SF-7000 printer**, **Load ROM** (the
 ROM of the model chosen: the SF-7000 IPL, or the Othello Multivision BIOS), then the Machine, Video, Input and Audio pages. Settings that change
 the machine wait for **Apply and reset** ("Changes pending" shows until then);
 video, input and audio settings act at once.
@@ -40,6 +40,7 @@ video, input and audio settings act at once.
 | Machine | Model | SC-3000 (default), SG-1000 or Othello Multivision |
 | | Mapper | Auto (default) or a fixed cartridge type |
 | | SF-7000 | Auto: attached when a disk is mounted (default) / On / Off |
+| | SF-7000 RS-232 | baud rate, the SF-7000's jumper: 9600 (default) ... 300; acts at once |
 | | Tape speed | 4x (default) or Normal |
 | | Rewind tape, Eject cartridge | buttons |
 | Video | Video standard | NTSC (default) / PAL |
@@ -114,9 +115,36 @@ SF-7000 = Auto the machine restarts with the disk unit attached and boots
 the disk (Disk BASIC: `FILES`, `LOAD "name"`, `SAVE "name"`). Writes go back
 to the image on the SD card.
 
+Disk BASIC 1.0p and 1.1p and their demo programs run. `UTILITY` starts the
+IPL's utility program: `F` formats a disk (put the new disk in when it asks;
+an image of any 160 KB file works), `C` copies one, `B` boots again.
+
+### Printer
+
+The SF-7000's Centronics port prints into a file. Mount a blank file in
+**SF-7000 printer** (a file of spaces, e.g. `releases/sf7000_printer_256k.prn`;
+the core can't make the file bigger), then in Disk BASIC choose the
+Centronics printer with `CONSOLE ,,,,2` (`,,,,1` is the SC-3000's own serial
+printer, the default) and use `LPRINT` / `LLIST`. The file gets exactly what
+BASIC sends, printer control codes included (it starts with `ESC Q P ESC e`);
+it is written out half a second after printing stops. Remounting starts the
+file over. With no file mounted the printer is "online" and the output is
+dropped, so programs that print never hang.
+
+### RS-232
+
+The 8251 is connected to the MiSTer UART (pick the connection in MiSTer's
+UART menu; the baud rate is the OSD row above). Disk BASIC: `COMSET 8,E`
+(length 5-8, parity N / E / O; 2 stop bits), `COMSAVE` sends the program as
+text, `COMLOAD` receives one (it ends on an empty line). Disk BASIC 1.0p has a
+bug: `COMSET` doesn't reset the 8251 before writing the new mode, so after a
+`COMSET` the 8251 stops sending and `COMSAVE` hangs (MAME does the same). It is
+fixed in 1.1p. With 1.0p, don't use `COMSET`: the format after boot is 8
+bits, even parity, 2 stop bits (or use 1.1p).
+
 ## Not done yet
 
-- SF-7000 RS-232 and printer ports (the USART is a stub)
+- SF-7000 RS-232: CTS is ignored (the transmitter never waits for it); 8251 synchronous mode isn't there
 - The SK-1100 / SC-3000 printer port
 - Tape quick start: the SC-3000 has no ROM that boots a tape; tapes load
   from BASIC's `LOAD` command, so there is no boot path to start a tape

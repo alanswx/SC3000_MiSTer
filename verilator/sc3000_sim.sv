@@ -36,6 +36,19 @@ module sc3000_sim #(
   output       [7:0]  sd_buff_din,
   input               sd_buff_wr,
   output              fdd_motor,
+  // SF-7000 RS-232 (8251) and printer file (third SD device)
+  input        [2:0]  baud,
+  output              uart_txd,
+  input               uart_rxd,
+  input               prn_img_mounted,
+  input        [31:0] prn_img_size,
+  output       [31:0] prn_sd_lba,
+  output              prn_sd_wr,
+  input               prn_sd_ack,
+  input        [8:0]  prn_sd_buff_addr,
+  output       [7:0]  prn_sd_buff_din,
+  output       [24:0] prn_length,
+  output              prn_active,
   // second SD device: Tape save (.bit recorder)
   input               rec_img_mounted,
   input        [31:0] rec_img_size,
@@ -203,6 +216,11 @@ module sc3000_sim #(
     .img_mounted(img_mounted), .img_readonly(img_readonly), .img_size(img_size),
     .sd_lba(sd_lba), .sd_rd(sd_rd), .sd_wr(sd_wr), .sd_ack(sd_ack),
     .sd_buff_addr(sd_buff_addr), .sd_buff_dout(sd_buff_dout), .sd_buff_din(sd_buff_din), .sd_buff_wr(sd_buff_wr),
+    .baud(baud), .uart_txd(uart_txd), .uart_rxd(uart_rxd), .uart_cts_n(1'b0), .uart_dsr_n(1'b0),
+    .uart_rts_n(), .uart_dtr_n(),
+    .prn_img_mounted(prn_img_mounted), .prn_img_readonly(1'b0), .prn_img_size({32'd0, prn_img_size}),
+    .prn_sd_lba(prn_sd_lba), .prn_sd_wr(prn_sd_wr), .prn_sd_ack(prn_sd_ack), .prn_sd_buff_addr(prn_sd_buff_addr),
+    .prn_sd_buff_din(prn_sd_buff_din), .prn_active(prn_active), .prn_length(prn_length),
     .motor_led(fdd_motor));
 
   sc3000_cart cart (

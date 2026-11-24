@@ -34,7 +34,7 @@ module sc3000_tape_rec #(
   output reg        sd_wr = 0,
   input             sd_ack,
   input       [8:0] sd_buff_addr,
-  output reg  [7:0] sd_buff_din,
+  output      [7:0] sd_buff_din,
 
   output reg        active = 0,    // a writable file is mounted
   output reg        recording = 0, // inside a block
@@ -54,11 +54,15 @@ module sc3000_tape_rec #(
   reg  [7:0] wd;
   reg        we = 0;
   reg        out_bank;          // bank being written to the SD card
+  reg  [7:0] buf_q;
+  reg        pad = 1'b0;
   reg  [8:0] out_fill;          // characters valid in it (0 = all 512)
   always @(posedge clk) begin
     if (we) buffer[wa] <= wd;
-    sd_buff_din <= (out_fill != 0 && sd_buff_addr >= out_fill) ? 8'h20 : buffer[{out_bank, sd_buff_addr}];
+    buf_q <= buffer[{out_bank, sd_buff_addr}];         // plain registered read: block RAM
+    pad   <= out_fill != 0 && sd_buff_addr >= out_fill;   // past the bytes of a part sector: spaces
   end
+  assign sd_buff_din = pad ? 8'h20 : buf_q;
 
   // ---------------------------------------------------------------- decoder
   reg        lvl_q = 0;

@@ -7,7 +7,7 @@ TOP  = sc3000_sim
 EXE  = obj_dir/V$(TOP)
 
 V_SRC = sim.vlt $(TOP).sv \
-	$(RTL)/sc3000.sv $(RTL)/omv_keypad.sv $(RTL)/sc3000_keyboard.sv $(RTL)/sc3000_cart.sv $(RTL)/sc3000_detect.sv $(RTL)/sc3000_tape.sv $(RTL)/sc3000_tape_motor.sv $(RTL)/sc3000_tape_rec.sv $(RTL)/sc3000_clocks.sv $(RTL)/sf7000.sv $(RTL)/sf7000_fdc.sv $(RTL)/cv_clock.sv \
+	$(RTL)/sc3000.sv $(RTL)/omv_keypad.sv $(RTL)/sc3000_keyboard.sv $(RTL)/sc3000_cart.sv $(RTL)/sc3000_detect.sv $(RTL)/sc3000_tape.sv $(RTL)/sc3000_tape_motor.sv $(RTL)/sc3000_tape_rec.sv $(RTL)/sc3000_clocks.sv $(RTL)/sf7000.sv $(RTL)/sf7000_fdc.sv $(RTL)/sf7000_usart.sv $(RTL)/sf7000_printer.sv $(RTL)/cv_clock.sv \
 	$(RTL)/vdp18v/vdp18_pkg.sv $(RTL)/vdp18v/vdp18_clk_gen.sv $(RTL)/vdp18v/vdp18_core.sv \
 	$(RTL)/vdp18v/vdp18_addr_mux.sv $(RTL)/vdp18v/vdp18_col_mux.sv $(RTL)/vdp18v/vdp18_cpuio.sv \
 	$(RTL)/vdp18v/vdp18_ctrl.sv $(RTL)/vdp18v/vdp18_hor_vert.sv $(RTL)/vdp18v/vdp18_pattern.sv \
@@ -37,7 +37,7 @@ obj_log/V$(TOP): $(V_SRC) sim_main.cpp Makefile
 	verilator $(V_FLAGS) --Mdir obj_log +define+FDC_LOG $(V_SRC) sim_main.cpp
 
 test: $(EXE) obj_full/V$(TOP) tests/kbd/obj/Vsc3000_keyboard
-	./tests/kbd/obj/Vsc3000_keyboard | tail -1 && ./tests/run_tests.sh && ./tests/tape_save_roundtrip.sh
+	./tests/kbd/obj/Vsc3000_keyboard | tail -1 && ./tests/run_tests.sh && ./tests/tape_save_roundtrip.sh && ./tests/sf7000_io.sh
 
 # keyboard unit test (rtl/sc3000_keyboard.sv; GAP = 100 clocks at CLK_HZ 2500)
 tests/kbd/obj/Vsc3000_keyboard: $(RTL)/sc3000_keyboard.sv tests/kbd/kbd_tb.cpp

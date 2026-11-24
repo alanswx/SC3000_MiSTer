@@ -36,6 +36,14 @@ static uint64_t cycles = 0;
 static std::string omv_path;
 static std::string cart_path, tape_path, ipl_path, disk_path, disk_out, rec_path;
 static size_t rec_size = 262144;
+static std::string prn_path, ser_out_path;
+static size_t prn_size = 65536;
+static int baud_sel = 0;                 // 0 = 9600 (jumper 1) ... 5 = 300
+static std::string ser_fmt = "8E2";      // bits, parity N/E/O, stop bits of the harness UART
+struct SerIn { int frame; std::string data; };
+struct DiskSwap { int frame; std::string path; };   // path "" = eject
+static std::vector<DiskSwap> swaps;
+static std::vector<SerIn> ser_in;
 static std::string outdir = "out", png_path, wav_path, trace_path, stop_text, vdp_dump_path;
 static int run_frames = 0, every = 0, mapper = -1, trace_from = 0, trace_to = 1 << 30;
 static std::set<int> shots, text_frames;
@@ -232,7 +240,7 @@ struct SdDev {
     }
   }
 };
-static SdDev disk, recdev;
+static SdDev disk, recdev, prndev;
 static std::vector<uint8_t>& disk_img = disk.img;
 static void sd_bind() {
   disk.rd = [] { return (bool)top->sd_rd; };  disk.wr = [] { return (bool)top->sd_wr; };
@@ -243,7 +251,59 @@ static void sd_bind() {
   recdev.lba_in = [] { return (uint32_t)top->rec_sd_lba; }; recdev.din = [] { return (uint8_t)top->rec_sd_buff_din; };
   recdev.ack = [](int v) { top->rec_sd_ack = v; }; recdev.baddr = [](int v) { top->rec_sd_buff_addr = v; };
   recdev.bdout = [](int) {}; recdev.bwr = [](int) {};
+  prndev.rd = [] { return false; }; prndev.wr = [] { return (bool)top->prn_sd_wr; };
+  prndev.lba_in = [] { return (uint32_t)top->prn_sd_lba; }; prndev.din = [] { return (uint8_t)top->prn_sd_buff_din; };
+  prndev.ack = [](int v) { top->prn_sd_ack = v; }; prndev.baddr = [](int v) { top->prn_sd_buff_addr = v; };
+  prndev.bdout = [](int) {}; prndev.bwr = [](int) {};
 }
+
+// ---------------------------------------------------------------- RS-232 (the other end of the 8251)
+// A software UART at the SF-7000 baud rate in the --serial-fmt format: decodes
+// uart_txd into ser_rx (what the SF-7000 sent), drives uart_rxd from ser_tx.
+struct SimUart {
+  int bits = 8, stop = 2; char par = 'E';
+  uint64_t period = 0;                   // sim clocks per bit
+  // receive (core -> harness)
+  int rstate = 0; uint64_t rnext = 0; int ri = 0; unsigned rsr = 0;
+  std::string rx; int rx_errors = 0; bool prev = true;
+  // transmit (harness -> core)
+  std::string tx; size_t ti = 0; int tstate = 0; uint64_t tnext = 0; int tb = 0; unsigned tframe = 0; int tlen = 0;
+  bool line = true;
+  void setup() {
+    bits = ser_fmt[0] - '0'; par = ser_fmt.size() > 1 ? ser_fmt[1] : 'N'; stop = ser_fmt.size() > 2 ? ser_fmt[2] - '0' : 1;
+    period = CLK_HZ / (9600 >> baud_sel);
+  }
+  int parity(unsigned d) { int p = __builtin_popcount(d & ((1u << bits) - 1)) & 1; return par == 'E' ? p : !p; }
+  void step(uint64_t now, bool txd) {
+    // decode
+    if (rstate == 0) { if (prev && !txd) { rstate = 1; rnext = now + period * 3 / 2; ri = 0; rsr = 0; } }
+    else if (now >= rnext) {
+      int nb = bits + (par != 'N');
+      if (ri < nb) { rsr |= (unsigned)txd << ri; ri++; rnext += period; }
+      else {
+        if (!txd) rx_errors++;                                       // framing
+        if (par != 'N' && ((rsr >> bits) & 1) != (unsigned)parity(rsr)) rx_errors++;
+        rx += char(rsr & ((1u << bits) - 1)); rstate = 0;
+      }
+    }
+    prev = txd;
+    // send
+    if (tstate == 0) {
+      if (ti < tx.size()) {
+        unsigned d = (uint8_t)tx[ti++]; tframe = 0; int n = 0;
+        tframe |= 0u << n++;                                         // start
+        for (int i = 0; i < bits; i++) tframe |= ((d >> i) & 1u) << n++;
+        if (par != 'N') tframe |= (unsigned)parity(d) << n++;
+        for (int i = 0; i < stop; i++) tframe |= 1u << n++;
+        tlen = n; tb = 0; tstate = 1; tnext = now;
+      }
+    } else if (now >= tnext) {
+      if (tb == tlen) { tstate = 0; line = true; }
+      else { line = (tframe >> tb) & 1; tb++; tnext = now + period; }
+    }
+  }
+};
+static SimUart uart;
 
 // ---------------------------------------------------------------- VDP state
 static int vdp_reg(int n) {
@@ -332,7 +392,16 @@ static void usage() {
        "  --sf7000 IPL            attach the SF-7000 with this IPL ROM (ipl.rom, 8 KB)\n"
        "  --disk FILE             .sf7 disk image in the SF-7000 drive (writes stay in memory)\n"
        "  --disk-out FILE         write the disk image back to FILE at the end\n"
+       "  --swap FILE@F           put another .sf7 in the drive at frame F (with --disk-out, the one\n"
+       "                          taken out is written to OUT.fF); 'blank' = 160 KB of E5,\n"
+       "                          '-' = eject\n"
        "  --rec FILE[:SIZE]       Tape save: record into a blank SIZE-byte .bit (spaces), written to FILE at the end\n"
+       "  --printer FILE[:SIZE]   SF-7000 printer: a blank SIZE-byte file (spaces) mounted, the printed bytes to FILE\n"
+       "  --baud N                SF-7000 baud jumper - 1: 0 = 9600 (default) ... 5 = 300\n"
+       "  --serial-fmt 8E2        format of the harness end of the RS-232 line (default 8E2, BASIC's default)\n"
+       "  --serial-in 'TEXT@F'    send TEXT (\\n = CR LF, \\r = CR, \\x1a = EOF) to the SF-7000 RS-232 from frame F\n"
+       "  --serial-in-file FILE@F send the bytes of FILE from frame F\n"
+       "  --serial-out FILE       what the SF-7000 sent on RS-232 (also printed at the end)\n"
        "  --tape FILE             tape image (.wav, MAME .bit); plays while the program polls PB7\n"
        "  --turbo                 OSD Tape speed = 4x (full-rate build only: make full)\n"
        "  --tape-log              log the virtual motor (play/stop) with the tape position\n"
@@ -402,6 +471,28 @@ int main(int argc, char** argv) {
 #endif
       tape_turbo = true;
     }
+    else if (a == "--printer") { std::string v = next(); size_t c = v.rfind(':');
+      if (c != std::string::npos) { prn_size = strtoul(v.c_str() + c + 1, 0, 0); v = v.substr(0, c); } prn_path = v; }
+    else if (a == "--baud") baud_sel = atoi(next());
+    else if (a == "--swap") { std::string v = next(); size_t at = v.rfind('@');
+      if (at == std::string::npos) { fprintf(stderr, "missing @FRAME in '%s'\n", v.c_str()); return 3; }
+      swaps.push_back({atoi(v.c_str() + at + 1), v.substr(0, at)}); }
+    else if (a == "--serial-fmt") ser_fmt = next();
+    else if (a == "--serial-out") ser_out_path = next();
+    else if (a == "--serial-in" || a == "--serial-in-file") {
+      std::string v = next(); size_t at = v.rfind('@');
+      if (at == std::string::npos) { fprintf(stderr, "missing @FRAME in '%s'\n", v.c_str()); return 3; }
+      std::string t = v.substr(0, at), d;
+      if (a == "--serial-in-file") { auto b = read_file(t); d.assign(b.begin(), b.end()); }
+      else for (size_t i = 0; i < t.size(); i++) {
+        if (t[i] == '\\' && i + 1 < t.size()) {
+          char n = t[++i];
+          if (n == 'n') d += "\r\n"; else if (n == 'r') d += '\r';
+          else if (n == 'x' && i + 2 < t.size()) { d += char(strtoul(t.substr(i + 1, 2).c_str(), 0, 16)); i += 2; }
+          else d += n;
+        } else d += t[i];
+      }
+      ser_in.push_back({atoi(v.c_str() + at + 1), d}); }
     else if (a == "--sg1000") model_sg1000 = true;
     else if (a == "--pal") pal = true;
     else if (a == "--border") border = true;
@@ -487,6 +578,8 @@ int main(int argc, char** argv) {
   top = new Vsc3000_sim;
   sd_bind();
   top->rec_img_mounted = 0; top->rec_sd_ack = 0;
+  top->prn_img_mounted = 0; top->prn_sd_ack = 0; top->baud = baud_sel; top->uart_rxd = 1;
+  uart.setup();
   top->use_ps2 = !paste_reqs.empty(); top->ps2_key = 0;
   top->model_sg1000 = model_sg1000; top->model_omv = !omv_path.empty(); top->omv_keys = 0; top->pal = pal; top->border = border;
   top->tab_x = 128; top->tab_y = 96; top->tab_pen = 0;
@@ -526,6 +619,13 @@ int main(int argc, char** argv) {
     top->rec_img_mounted = 0;
     printf("tape save: blank %zu-byte .bit\n", rec_size);
   }
+  if (!prn_path.empty()) {
+    prndev.img.assign(prn_size, ' ');
+    top->prn_img_size = prn_size; top->prn_img_mounted = 1;
+    for (int i = 0; i < 4; i++) tick();
+    top->prn_img_mounted = 0;
+    printf("printer: blank %zu-byte file\n", prn_size);
+  }
   if (!disk_path.empty()) {
     disk_img = read_file(disk_path);
     top->img_size = disk_img.size(); top->img_readonly = 0; top->img_mounted = 1;
@@ -550,6 +650,8 @@ int main(int argc, char** argv) {
     tick();
     if (top->sf7000_on) disk.step();
     if (!rec_path.empty()) recdev.step();
+    if (!prn_path.empty()) prndev.step();
+    if (top->sf7000_on) { uart.step(cycles, top->uart_txd); top->uart_rxd = uart.line; }
 
     // opcode fetches: the byte is on DI when MREQ goes up at the end of T2
     bool fetch = !top->cpu_m1_n && !top->cpu_mreq_n && top->cpu_iorq_n && !top->cpu_rd_n;
@@ -613,6 +715,16 @@ int main(int argc, char** argv) {
       }
 
       // input for the new frame
+      for (auto& si : ser_in) if (si.frame == frame) uart.tx += si.data;
+      for (auto& sw : swaps) if (sw.frame == frame) {
+        if (!disk_out.empty()) { std::string o = disk_out + ".f" + std::to_string(frame);
+          FILE* f = fopen(o.c_str(), "wb"); if (f) { fwrite(disk_img.data(), 1, disk_img.size(), f); fclose(f); } }
+        if (sw.path == "-") disk_img.clear();
+        else if (sw.path == "blank") disk_img.assign(40 * 16 * 256, 0xE5);
+        else disk_img = read_file(sw.path);
+        top->img_size = disk_img.size(); top->img_mounted = 1; tick(); tick(); top->img_mounted = 0;
+        printf("f%d disk swap: %s (%zu bytes)\n", frame, sw.path.c_str(), disk_img.size());
+      }
       for (auto& p : paste_reqs) if (p.frame == frame) {
         expand_paste(p, cycles);
         std::sort(ps2_evs.begin() + ps2_i, ps2_evs.end(), [](const Ps2Ev& a, const Ps2Ev& b) { return a.cycle < b.cycle; }); }
@@ -659,6 +771,19 @@ int main(int argc, char** argv) {
     size_t n = std::min((size_t)top->rec_length, recdev.img.size());
     FILE* f = fopen(rec_path.c_str(), "wb"); if (f) { fwrite(recdev.img.data(), 1, n, f); fclose(f); }
     printf("tape save: %zu characters, %llu sector writes -> %s\n", n, (unsigned long long)recdev.writes, rec_path.c_str());
+  }
+  if (!prn_path.empty()) {
+    // the file as the SD card has it, cut at the bytes printed
+    size_t n = std::min((size_t)top->prn_length, prndev.img.size());
+    FILE* f = fopen(prn_path.c_str(), "wb"); if (f) { fwrite(prndev.img.data(), 1, n, f); fclose(f); }
+    printf("printer: %zu bytes, %llu sector writes -> %s\n", n, (unsigned long long)prndev.writes, prn_path.c_str());
+  }
+  if (top->sf7000_on && (!uart.rx.empty() || !ser_out_path.empty() || !ser_in.empty())) {
+    std::string vis;
+    for (char c : uart.rx) { if (c == '\r') vis += "\\r"; else if (c == '\n') vis += "\\n"; else if ((uint8_t)c < 32 || (uint8_t)c > 126) { char b[8]; snprintf(b, 8, "\\x%02X", (uint8_t)c); vis += b; } else vis += c; }
+    printf("serial out: %zu bytes, %d errors: %s\n", uart.rx.size(), uart.rx_errors, vis.c_str());
+    printf("serial in: %zu of %zu bytes sent\n", uart.ti, uart.tx.size());
+    if (!ser_out_path.empty()) { FILE* f = fopen(ser_out_path.c_str(), "wb"); if (f) { fwrite(uart.rx.data(), 1, uart.rx.size(), f); fclose(f); } }
   }
   if (!disk_out.empty()) { FILE* f = fopen(disk_out.c_str(), "wb"); if (f) { fwrite(disk_img.data(), 1, disk_img.size(), f); fclose(f); } }
   if (trace_f) { fclose(trace_f); printf("trace: %llu instructions -> %s\n", (unsigned long long)trace_lines, trace_path.c_str()); }

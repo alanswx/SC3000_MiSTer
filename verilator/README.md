@@ -64,6 +64,22 @@ with the macOS debugger window.
 ./obj_dir/Vsc3000_sim --sf7000 ipl.rom --disk basic.sf7 --type 'FILES\n@1000' --frames 1300 --text-end
 ```
 
+SF-7000 printer, RS-232 and disk swaps:
+
+```
+# Centronics printer into a blank file (CONSOLE ,,,,2 picks it in Disk BASIC)
+./obj_dir/Vsc3000_sim --sf7000 ipl.rom --disk basic.sf7 --printer prn.txt --frames 1600 \
+  --type 'CONSOLE ,,,,2:CLS\n@1000' --type 'LPRINT "HI"\n@1300'
+
+# RS-232: --serial-in sends to the 8251, what it sends is printed at the end
+# (--serial-out FILE too); --serial-fmt is the far end's format, --baud the jumper (0 = 9600)
+./obj_dir/Vsc3000_sim --sf7000 ipl.rom --disk basic.sf7 --frames 1900 --type 'COMLOAD\n@1000' \
+  --serial-in '10 PRINT "HELLO"\n\n@1150' --type 'LIST\n@1650' --text-end
+
+# --swap FILE@F changes the disk at frame F ('blank' = empty 160 KB, '-' = eject);
+# tests/sf7000_io.sh formats a disk with the IPL utility this way
+```
+
 Othello Multivision: `--omv omvbios.bin` (BIOS, no cartridge), `--pad KEYS@FRAME[:N]`
 presses keypad keys (1-9, 0, A-H):
 

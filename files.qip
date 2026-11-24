@@ -29,6 +29,8 @@ set_global_assignment -name SYSTEMVERILOG_FILE rtl/sc3000_tape.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/sc3000_tape_motor.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/sc3000_tape_rec.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/sf7000_fdc.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/sf7000_usart.sv
+set_global_assignment -name SYSTEMVERILOG_FILE rtl/sf7000_printer.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/sf7000.sv
 set_global_assignment -name SYSTEMVERILOG_FILE rtl/sc3000.sv
 set_global_assignment -name SDC_FILE SC3000.sdc
