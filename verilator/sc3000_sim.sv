@@ -56,6 +56,8 @@ module sc3000_sim #(
   // keyboard matrix from the harness: bit (row*12 + col), 1 = pressed;
   // col 0-7 = PA0-7, 8-11 = PB0-3 (MAME sk1100.cpp PAn / PBn ports)
   input        [95:0] key_matrix,
+  input               use_ps2,         // 1: the keyboard is rtl/sc3000_keyboard.sv fed with ps2_key
+  input        [10:0] ps2_key,
   input        [5:0]  joy1,            // 1 = pressed {TR, TL, right, left, down, up}
   input        [5:0]  joy2,
   input               nmi_key,
@@ -177,7 +179,10 @@ module sc3000_sim #(
 
   // Keyboard matrix ---------------------------------------------------------
   wire [2:0]  kbd_row;
-  wire [11:0] row_keys = key_matrix[kbd_row*12 +: 12];
+  wire [11:0] ps2_row_n;
+  sc3000_keyboard #(.CLK_HZ(FULL ? 42954545 : 10738635)) keyboard (
+    .clk_sys(clk), .reset(reset), .pc_layout(1'b1), .row_sel(kbd_row), .ps2_key(ps2_key), .row_data(ps2_row_n));
+  wire [11:0] row_keys = use_ps2 ? ~ps2_row_n : key_matrix[kbd_row*12 +: 12];
 
   // Machine -----------------------------------------------------------------
   wire        hs_n, vs_n;

@@ -12,12 +12,13 @@
 //     is a capital and Shift gives lower case, so PC 'A' (Shift+a) types 'A'.
 //   SC-3000 (pc_layout = 0): by position, as the real keyboard.
 //
-// Every change to the matrix is spaced at least GAP apart (40 ms; 320 ms after
-// RETURN is released, while BASIC takes in the line), through a queue:
-// BASIC scans the keyboard once a frame and misses a key that is down for less
-// than about two scans (fast typists, pasted text, KVMS). The queue holds 1024
-// changes (512 characters: a pasted program; block RAM). When it is full a key
-// is dropped whole: its press is not queued and neither is its release.
+// Changes to the matrix go through a queue (1024 changes = 512 characters, a
+// pasted program; block RAM; when it is full a key is dropped whole, press and
+// release). Each change stays until the machine has read it: at least GAP
+// (40 ms) and two full scans of rows 0-6 on the PPI (row_sel), so a key is never
+// missed however long BASIC is busy (storing a long line after RETURN it scans
+// nothing for 400 ms and more). A program that reads only some rows gets the
+// next change after 4 x GAP of row activity; one that reads none, after 2 s.
 //-----------------------------------------------------------------------------
 
 module sc3000_keyboard #(
@@ -170,6 +171,34 @@ module sc3000_keyboard #(
   reg        q_ne = 1'b0;
   always @(posedge clk_sys) e <= q[rp];
 
+  // has the machine read the matrix since the last change?
+  localparam int PART = GAP * 4;      // some rows scanned, never all: 160 ms
+  localparam int IDLE = GAP * 50;     // no scanning at all: 2 s
+  reg  [2:0] row_q = 3'd0;
+  reg  [6:0] seen = 7'd0;
+  reg  [1:0] full = 2'd0;            // full scans since the last change (saturates at 2)
+  reg        act = 1'b0;             // any row change since the last change
+  reg [31:0] since = 0;              // clocks since the last change
+  wire       applied;
+  wire [6:0] seen_now = seen | ((row_sel < 3'd7) ? (7'd1 << row_sel) : 7'd0);
+  always @(posedge clk_sys) begin
+    row_q <= row_sel;
+    if (reset || applied) begin
+      seen <= 7'd0; full <= 2'd0; act <= 1'b0; since <= 0;
+    end else begin
+      if (since != 32'hFFFFFFFF) since <= since + 1;
+      if (row_sel != row_q) begin
+        act <= 1'b1;
+        if (seen_now == 7'h7F) begin
+          seen <= 7'd0;
+          if (full != 2'd2) full <= full + 2'd1;
+        end else seen <= seen_now;
+      end
+    end
+  end
+  wire read_out = (full == 2'd2) || (act && since >= PART) || (since >= IDLE);
+  assign applied = !reset && t == 0 && !q_empty && q_ne && read_out;
+
   always @(posedge clk_sys) begin
     q_ne <= !q_empty;
     if (reset) begin
@@ -177,11 +206,9 @@ module sc3000_keyboard #(
       rp <= 0; t <= 0; shf <= 2'd0; shf_pos <= 7'h7F; q_ne <= 1'b0;
     end else begin
       if (t != 0) t <= t - 1;
-      else if (!q_empty && q_ne) begin
+      else if (applied) begin
         rp <= rp + 10'd1;
-        // after RETURN goes up, BASIC stores the line and doesn't scan the
-        // keyboard for a while: hold the next key back longer (pasted text)
-        t  <= (!e[9] && e[8:2] == {3'd5, 4'd6}) ? GAP * 8 : GAP;
+        t  <= GAP;
         if (e[8:6] < 3'd7) mat[e[8:6]][e[5:2]] <= e[9];
         if (e[9]) begin
           shf <= e[1:0];

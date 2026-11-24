@@ -21,7 +21,7 @@ greybox_tmp/
 build.out
 
 # releases: only the newest RBF is kept in git
-releases/SC3000_20261118[a-k].rbf
+releases/SC3000_20261118[a-l].rbf
 
 # recordings (game audio, emulator captures)
 hwtest/**/*.wav

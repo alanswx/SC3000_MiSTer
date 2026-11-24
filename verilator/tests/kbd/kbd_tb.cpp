@@ -3,10 +3,13 @@
 #include "verilated.h"
 #include <cstdio>
 static Vsc3000_keyboard* k; static int fails = 0, toggle = 0;
-static void tick(int n = 1) { while (n--) { k->clk_sys = 0; k->eval(); k->clk_sys = 1; k->eval(); } }
+// the machine: scans rows 0-6 one per clock, unless busy (scanning = false)
+static bool scanning = true; static int scan_row = 0, scan_div = 1, scan_cnt = 0;
+static void tick(int n = 1) { while (n--) { if (scanning && ++scan_cnt >= scan_div) { scan_cnt = 0; k->row_sel = scan_row; scan_row = (scan_row + 1) % 7; }
+  k->clk_sys = 0; k->eval(); k->clk_sys = 1; k->eval(); } }
 static void ps2(int code, bool down) { toggle ^= 1; k->ps2_key = (code & 0x1FF) | (down << 9) | (toggle << 10); tick(4); }
 // pressed? (active low row_data) and SC shift state
-static bool at(int row, int col) { k->row_sel = row; tick(); return !((k->row_data >> col) & 1); }
+static bool at(int row, int col) { k->row_sel = row; k->eval(); return !((k->row_data >> col) & 1); }
 static void expect(const char* what, int row, int col, int shift) {
   tick(400);   // let the queue apply (GAP = 100 clocks in this test: CLK_HZ 2500)
   bool p = at(row, col), sh = at(6, 11);
@@ -78,6 +81,37 @@ int main() {
     printf("paste of %zu chars: %zu presses (want %zu)  %s\n", paste.size(), got.size(), ref.size() * 14, ok ? "ok" : "FAIL");
     if (!ok) fails++;
   }
+  {
+    // the machine stops scanning (BASIC storing a line): queued keys wait, none is lost
+    tick(2000);
+    scanning = false; k->row_sel = 5;                     // the machine gets busy
+    ps2(0x1C, 1); ps2(0x1C, 0); ps2(0x32, 1); ps2(0x32, 0);   // a, b: 'a' goes down (it was idle long)
+    tick(3000);                      // busy 3000 clocks (30 x GAP, less than the 2 s fallback)
+    bool a_held = at(0, 2), b_wait = !at(2, 3) && !at(4, 3);
+    scanning = true;
+    auto e = watch(2000);
+    bool ok = a_held && b_wait && e.size() >= 1 && e.back().pos == 4 * 12 + 3;   // then 'b' (row 4 col 3)
+    printf("busy machine: 'a' held %d, 'b' waits %d, then 'b' %d  %s\n", a_held, b_wait, e.size() >= 1 && e.back().pos == 51, ok ? "ok" : "FAIL");
+    if (!ok) fails++;
+  }
+  {
+    // realistic paste: GAP = 100 clocks = 40 ms, so a frame is 42 clocks; BASIC scans the
+    // 7 rows every 2 frames (a row every 12 clocks); KVMS sends a key every 80 ms
+    // (held 30 ms): the queue backs up by hundreds of changes
+    scan_div = 12;
+    std::string line = "10 OUT 191,144:OUT 191,129\n20 OUT 191,0:OUT 191,64:FOR I=0 TO 255:NEXT\n";
+    std::string paste; for (int i = 0; i < 4; i++) paste += line;
+    std::vector<Ev> got;
+    for (char ch : paste) { bool sh; int c = code_of(ch, sh); if (c < 0) continue;
+      if (sh) ps2(0x12, 1); ps2(c, 1); auto e1 = watch(75 / 8); got.insert(got.end(), e1.begin(), e1.end());
+      ps2(c, 0); if (sh) ps2(0x12, 0); auto e2 = watch(125 / 8); got.insert(got.end(), e2.begin(), e2.end()); }
+    auto rest = watch(250000); got.insert(got.end(), rest.begin(), rest.end());
+    size_t want = 0; for (char ch : paste) { bool sh; if (code_of(ch, sh) >= 0) want++; }
+    bool ok = got.size() == want;
+    printf("slow-scan paste of %zu keys: %zu presses  %s\n", want, got.size(), ok ? "ok" : "FAIL");
+    if (!ok) fails++;
+    scan_div = 1;
+  }
   k->pc_layout = 0; ps2(0x12, 1); ps2(0x1C, 1); expect("SC layout: Shift+a", 0, 2, 1); ps2(0x1C, 0); ps2(0x12, 0);
-  printf("%s\n", fails ? "FAILED" : "PASSED"); delete k; return fails != 0;
+  printf("%s\n", fails ? "FAILED" : "PASSED"); k->final(); delete k; return fails != 0;
 }

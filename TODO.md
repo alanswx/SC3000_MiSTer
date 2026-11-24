@@ -22,6 +22,12 @@
         when applied, and KVMS holds Shift for the next capital meanwhile. Now the Shift is stored
         with the key when queued (test: Shift held while the queue drains). Build l (md5 2dd285aa…,
         35% ALMs, 50% RAM, +7.8 ns): the 7-line program pasted through KVMS arrives exactly
+        Long lines still lost keys after RETURN (BASIC stores the line for 400 ms+ without
+        scanning; the fixed 320 ms pause was too short). Now each change waits until the PPI has
+        selected all of rows 0-6 twice (fallbacks: 160 ms of partial scanning, 2 s of none); the
+        RETURN special case is gone. Unit test: busy machine + slow-scan paste; sim: --paste
+        (PS/2 events through the real keyboard module at KVMS timing) lists a 5-line program
+        exactly. Build m (md5 0b886863…, 35% ALMs, 50% RAM, +7.3 ns): KVMS paste exact on mister126
 - [ ] Phase 3: cartridge mappers (MAME sega8 list)
   - [x] rom, level3, castle, othello; auto-detect (CRC table + MAME string rules)
   - [x] terebi, dahjee A/B, music_editor, multicart (2 MB), megacart (4 MB): sim boots all, multicart/megacart

@@ -150,7 +150,44 @@ static std::vector<uint8_t> read_file(const std::string& p) {
   fclose(f); return d;
 }
 
+// --paste: PS/2 key events into rtl/sc3000_keyboard.sv (PC layout), timed like
+// a USB keyboard / KVMS paste: each key held HOLD ms, GAP ms between keys
+struct Ps2Ev { uint64_t cycle; int code; bool down; };
+static std::vector<Ps2Ev> ps2_evs; static size_t ps2_i = 0; static int ps2_toggle = 0;
+struct PasteReq { int frame; std::string text; int hold_ms, gap_ms; };
+static std::vector<PasteReq> paste_reqs;
+static int ps2_code(char ch, bool& shift) {
+  static const char* up = "ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+  static const int uc[] = {0x1C,0x32,0x21,0x23,0x24,0x2B,0x34,0x33,0x43,0x3B,0x42,0x4B,0x3A,0x31,0x44,0x4D,0x15,0x2D,0x1B,0x2C,0x3C,0x2A,0x1D,0x22,0x35,0x1A};
+  shift = false;
+  for (int i = 0; up[i]; i++) { if (up[i] == ch) { shift = true; return uc[i]; } if (up[i] + 32 == ch) return uc[i]; }
+  switch (ch) {
+    case '1': return 0x16; case '2': return 0x1E; case '3': return 0x26; case '4': return 0x25; case '5': return 0x2E;
+    case '6': return 0x36; case '7': return 0x3D; case '8': return 0x3E; case '9': return 0x46; case '0': return 0x45;
+    case ' ': return 0x29; case ',': return 0x41; case '.': return 0x49; case ';': return 0x4C; case '=': return 0x55;
+    case '-': return 0x4E; case '/': return 0x4A; case '\n': return 0x5A; case '\'': return 0x52;
+    case ':': shift = true; return 0x4C; case '*': shift = true; return 0x3E; case '(': shift = true; return 0x46;
+    case ')': shift = true; return 0x45; case '"': shift = true; return 0x52; case '+': shift = true; return 0x55;
+    case '$': shift = true; return 0x25; case '<': shift = true; return 0x41; case '>': shift = true; return 0x49;
+  }
+  return -1;
+}
+static void expand_paste(const PasteReq& p, uint64_t base) {
+  const uint64_t ms = CLK_HZ / 1000; uint64_t t = base;
+  std::string txt; for (size_t i = 0; i < p.text.size(); i++) {
+    if (p.text[i] == '\\' && i + 1 < p.text.size() && p.text[i + 1] == 'n') { txt += '\n'; i++; } else txt += p.text[i]; }
+  for (char ch : txt) { bool sh; int c = ps2_code(ch, sh); if (c < 0) continue;
+    if (sh) { ps2_evs.push_back({t, 0x12, true}); t += 5 * ms; }
+    ps2_evs.push_back({t, c, true}); t += p.hold_ms * ms;
+    ps2_evs.push_back({t, c, false}); t += 2 * ms;
+    if (sh) { ps2_evs.push_back({t, 0x12, false}); }
+    t += p.gap_ms * ms; }
+}
+
 static void tick() {
+  while (ps2_i < ps2_evs.size() && ps2_evs[ps2_i].cycle <= cycles) {
+    const Ps2Ev& e = ps2_evs[ps2_i++]; ps2_toggle ^= 1;
+    top->ps2_key = (e.code & 0x1FF) | (e.down << 9) | (ps2_toggle << 10); }
   top->clk = 0; top->eval();
   top->clk = 1; top->eval();
   cycles++;
@@ -302,6 +339,8 @@ static void usage() {
        "  --sg1000                SG-1000 model (1 KB RAM, SG-1000 I/O map, no keyboard)\n"
        "  --omv BIOS              Othello Multivision FG-2000 with this BIOS (omvbios.bin, 16 KB)\n"
        "  --pad KEYS@FRAME[:N]    OMV keypad: KEYS from 1-9 0 A-H (# = 9, * = 0), held N frames (3)\n"
+       "  --paste 'TEXT@F[:HOLD:GAP]' type TEXT through rtl/sc3000_keyboard.sv (PS/2 events, PC layout),\n"
+       "                          each key held HOLD ms, GAP ms between keys (default 30:50, KVMS paste)\n"
        "  --pal / --border        TMS9929A timing / VDP border on\n"
        "  --frames N              stop after N frames (required)\n"
        "  --png FILE              write the last frame to FILE\n"
@@ -395,6 +434,12 @@ int main(int argc, char** argv) {
       pen_evs.push_back({p.second, len, x, y});
     }
     else if (a == "--omv") omv_path = next();
+    else if (a == "--paste") {   // 'TEXT@FRAME[:HOLD:GAP]' ms, default 30:50 (KVMS)
+      std::string v = next(); int hold = 30, gap = 50; size_t at = v.rfind('@');
+      std::string tail = v.substr(at + 1); int f = atoi(tail.c_str());
+      size_t c1 = tail.find(':'); if (c1 != std::string::npos) { hold = atoi(tail.c_str() + c1 + 1);
+        size_t c2 = tail.find(':', c1 + 1); if (c2 != std::string::npos) gap = atoi(tail.c_str() + c2 + 1); }
+      paste_reqs.push_back({f, v.substr(0, at), hold, gap}); }
     else if (a == "--pad") {
       std::string v = next(); int len = 3; size_t c = v.rfind(':');
       if (c != std::string::npos && c > v.rfind('@')) { len = atoi(v.c_str() + c + 1); v = v.substr(0, c); }
@@ -442,6 +487,7 @@ int main(int argc, char** argv) {
   top = new Vsc3000_sim;
   sd_bind();
   top->rec_img_mounted = 0; top->rec_sd_ack = 0;
+  top->use_ps2 = !paste_reqs.empty(); top->ps2_key = 0;
   top->model_sg1000 = model_sg1000; top->model_omv = !omv_path.empty(); top->omv_keys = 0; top->pal = pal; top->border = border;
   top->tab_x = 128; top->tab_y = 96; top->tab_pen = 0;
   top->reset = 1; top->nmi_key = 0; top->joy1 = 0; top->joy2 = 0; top->tape_rewind = 0; top->tape_turbo = 0; top->sf7000_on = 0; top->sd_ack = 0; top->sd_buff_wr = 0; top->img_mounted = 0;
@@ -567,6 +613,9 @@ int main(int argc, char** argv) {
       }
 
       // input for the new frame
+      for (auto& p : paste_reqs) if (p.frame == frame) {
+        expand_paste(p, cycles);
+        std::sort(ps2_evs.begin() + ps2_i, ps2_evs.end(), [](const Ps2Ev& a, const Ps2Ev& b) { return a.cycle < b.cycle; }); }
       while (ki < key_evs.size() && key_evs[ki].frame <= frame) {
         KeyEv& e = key_evs[ki++]; int bit = e.rc.row * 12 + e.rc.col;
         key_count[bit] += e.down ? 1 : -1;
