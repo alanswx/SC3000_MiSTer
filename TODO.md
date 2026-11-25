@@ -91,6 +91,7 @@
         lines in order; 1.0p COMSAVE 9600 8E2 exact, COMLOAD from ttyS1 then LIST exact.
         Build o (md5 7141c8ac..., 30% ALMs, core setup +7.477 ns): Main had no UART menu for the core (no
         `UART` in CONF_STR line 1), now added and the 8251 baud follows Main's speed (OSD row gone);
+        KVMS: System page shows "UART mode (None)" (Baud row only for modes other than None);
         uartspeed 1200: /tmp/UART_SPEED 1200, 1.1p COMSET 7,O + COMSAVE at 1200 7O2 exact, COMLOAD back + RUN
 - [ ] Phase 7: hardware test (user go-ahead)
 

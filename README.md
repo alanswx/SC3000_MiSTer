@@ -134,8 +134,9 @@ dropped, so programs that print never hang.
 
 The 8251 is connected to the MiSTer UART. Pick the connection and the baud
 rate (9600, the default, down to 300) in MiSTer's UART menu; the core sets
-the SF-7000's baud jumper to match. With the connection "None", Linux's
-`/dev/ttyS1` is the other end, e.g. `stty -F /dev/ttyS1 9600 cs8 parenb
+the SF-7000's baud jumper to match. Main shows the Baud row only for a
+connection other than None; the speed picked there (and saved) still applies
+with None. With the connection "None", Linux's `/dev/ttyS1` is the other end, e.g. `stty -F /dev/ttyS1 9600 cs8 parenb
 -parodd cstopb raw -echo clocal` then `cat /dev/ttyS1` while BASIC does
 `COMSAVE`. Disk BASIC: `COMSET 8,E`
 (length 5-8, parity N / E / O; 2 stop bits), `COMSAVE` sends the program as
