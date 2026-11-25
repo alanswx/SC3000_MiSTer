@@ -71,7 +71,7 @@
   - [x] sim: Disk BASIC 1.0p boots (18669 bytes free = MAME), FILES, SAVE + LOAD round trip
   - [x] OSD: SF-7000 disk (S0), Load ROM = IPL (boot0.rom), SF-7000 Auto/On/Off
   - [x] 8251 USART (`rtl/sf7000_usart.sv`, async; TxC/RxC = 4.9152 MHz / (32 << jumper) as MAME) on the
-        MiSTer UART, OSD baud row (9600-300). Sim: harness UART (--serial-in / --serial-out / --serial-fmt):
+        MiSTer UART, baud (9600-300) from Main's UART menu (CONF_STR `UART9600:...`; build o). Sim: harness UART (--serial-in / --serial-out / --serial-fmt):
         COMSAVE (1.0p 8E2, 1.1p COMSET 7,O -> 7O2) and COMLOAD exact. Disk BASIC 1.0p's COMSET skips the
         8251 reset (jr to 1FB3 past the 00 00 00 40 at 1FA6; 75D3 is the error handler), so its mode byte
         lands as a command with IR set and the 8251 (MAME i8251 too) stops sending: fixed in 1.1p (jr to
@@ -86,8 +86,12 @@
         sector buffers were registers (the space-padding mux sat inside the registered RAM read: 3.6k + 2.1k
         ALMs); registered read + mux after it puts them in block RAM. Regression 40/40, tape round trip,
         tests/sf7000_io.sh 6/6
-  - [ ] hardware: printer file + RS-232 on mister126 (stty/cat on /dev/ttyS1 is the far end), not run:
-        mister126 was busy with P2000T tests
+  - [x] hardware, mister14 (2026-11-25, uinput keyboard + MiSTer_cmd screenshots, /dev/ttyS1 as the far end):
+        build n: LPRINT / LLIST file byte-identical to the sim test; FOR 1-150 LPRINT, 2 KB over 4 sectors, all
+        lines in order; 1.0p COMSAVE 9600 8E2 exact, COMLOAD from ttyS1 then LIST exact.
+        Build o (md5 7141c8ac..., 30% ALMs, core setup +7.477 ns): Main had no UART menu for the core (no
+        `UART` in CONF_STR line 1), now added and the 8251 baud follows Main's speed (OSD row gone);
+        uartspeed 1200: /tmp/UART_SPEED 1200, 1.1p COMSET 7,O + COMSAVE at 1200 7O2 exact, COMLOAD back + RUN
 - [ ] Phase 7: hardware test (user go-ahead)
 
 ## After 1.0

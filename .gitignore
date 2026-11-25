@@ -32,3 +32,4 @@ hwtest/*.wav
 
 # MAME snapshots from comparison runs
 verilator/snap/
+releases/SC3000_20261124n.rbf

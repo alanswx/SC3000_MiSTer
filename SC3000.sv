@@ -38,13 +38,12 @@ reg  [127:0] cfg = 0;          // machine settings, latched at reset (osd-standa
 //          19 Tape audio, 22 Keyboard, 24 Tape overlay, 23 Tape speed (taken
 //          when the deck starts, tape-standard rule 1), buttons 18 Eject
 //          cartridge, 17 Rewind tape
-//   live:  29:27 SF-7000 RS-232 baud (jumper)
 //   reset: 6 Border, 12 Model, 13 Video standard, 16:14 Mapper, 21:20 SF-7000 (cfg)
 // Media: F1 cartridge, F2 tape (SDRAM ch1), S1 Tape save (.bit recorder),
 // S0 SF-7000 disk (.sf7), S2 SF-7000 printer output (a blank file), F0 Load ROM
 // = the SF-7000 IPL (games/SC3000/boot0.rom = MAME sf7000 ipl.rom).
 parameter CONF_STR = {
-	"SC3000;;",
+	"SC3000;UART9600:4800:2400:1200:600:300;",
 	"-;",
 	"F1,SG SC BINROM,Cartridge;",
 	"F2,WAVBIT,Tape;",
@@ -64,7 +63,6 @@ parameter CONF_STR = {
 	"P1O[26:25],Model,SC-3000,SG-1000,Othello Multivision;",
 	"P1O[16:14],Mapper,Auto,ROM,BASIC Level 3,The Castle,Othello/BASIC 2,Terebi Oekaki,Dahjee A,Dahjee B;",
 	"H1P1O[21:20],SF-7000,Auto,On,Off;",
-	"H1P1O[29:27],SF-7000 RS-232,9600,4800,2400,1200,600,300;",
 	"h1P1-;",
 	"P1-;",
 	"P1O[23],Tape speed,4x,Normal;",
@@ -144,6 +142,14 @@ wire  [7:0] sd_buff_dout;
 wire  [7:0] sd_buff_din[3];
 wire        sd_buff_wr;
 
+// SF-7000 RS-232 baud (the jumper on a real unit) follows the speed picked in
+// Main's UART menu, so both ends of the MiSTer UART always agree
+wire  [7:0] uart_mode;
+wire [31:0] uart_speed;
+wire  [2:0] sf7_baud = (uart_speed == 0 || uart_speed >= 9600) ? 3'd0 :
+                       (uart_speed >= 4800) ? 3'd1 : (uart_speed >= 2400) ? 3'd2 :
+                       (uart_speed >= 1200) ? 3'd3 : (uart_speed >= 600)  ? 3'd4 : 3'd5;
+
 hps_io #(.CONF_STR(CONF_STR), .VDNUM(3)) hps_io
 (
 	.clk_sys(clk_sys),
@@ -151,6 +157,8 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(3)) hps_io
 
 	.buttons(buttons),
 	.status(status),
+	.uart_mode(uart_mode),
+	.uart_speed(uart_speed),
 	.status_menumask({14'd0, ~ipl_loaded | (status[26:25] != 2'd0), pending}),
 	.forced_scandoubler(forced_scandoubler),
 	.gamma_bus(gamma_bus),
@@ -337,7 +345,7 @@ sf7000 sf7000
 	.sd_buff_din(sd_buff_din[0]),
 	.sd_buff_wr(sd_buff_wr),
 	// RS-232: the MiSTer UART (CTS ignored, so nothing hangs with no device on the line)
-	.baud(status[29:27]),
+	.baud(sf7_baud),
 	.uart_txd(UART_TXD),
 	.uart_rxd(UART_RXD),
 	.uart_cts_n(1'b0),

@@ -40,7 +40,6 @@ video, input and audio settings act at once.
 | Machine | Model | SC-3000 (default), SG-1000 or Othello Multivision |
 | | Mapper | Auto (default) or a fixed cartridge type |
 | | SF-7000 | Auto: attached when a disk is mounted (default) / On / Off |
-| | SF-7000 RS-232 | baud rate, the SF-7000's jumper: 9600 (default) ... 300; acts at once |
 | | Tape speed | 4x (default) or Normal |
 | | Rewind tape, Eject cartridge | buttons |
 | Video | Video standard | NTSC (default) / PAL |
@@ -133,8 +132,12 @@ dropped, so programs that print never hang.
 
 ### RS-232
 
-The 8251 is connected to the MiSTer UART (pick the connection in MiSTer's
-UART menu; the baud rate is the OSD row above). Disk BASIC: `COMSET 8,E`
+The 8251 is connected to the MiSTer UART. Pick the connection and the baud
+rate (9600, the default, down to 300) in MiSTer's UART menu; the core sets
+the SF-7000's baud jumper to match. With the connection "None", Linux's
+`/dev/ttyS1` is the other end, e.g. `stty -F /dev/ttyS1 9600 cs8 parenb
+-parodd cstopb raw -echo clocal` then `cat /dev/ttyS1` while BASIC does
+`COMSAVE`. Disk BASIC: `COMSET 8,E`
 (length 5-8, parity N / E / O; 2 stop bits), `COMSAVE` sends the program as
 text, `COMLOAD` receives one (it ends on an empty line). Disk BASIC 1.0p has a
 bug: `COMSET` doesn't reset the 8251 before writing the new mode, so after a
