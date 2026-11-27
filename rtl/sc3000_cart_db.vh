@@ -35,6 +35,8 @@ function automatic [4:0] cart_db(input [31:0] crc);
     32'hf4e7f01b: cart_db = {1'b1, 4'd8};   // sc3000_cart:multcart228 (multicart)
     32'h0084b239: cart_db = {1'b1, 4'd8};   // sc3000_cart:multcart (multicart)
     32'h76a3d2e2: cart_db = {1'b1, 4'd9};   // sc3000_cart:megacart (megacart)
+    32'h323f357f: cart_db = {1'b1, 4'd10};   // extra:loretta (sega_315_5208)
+    32'hea7fc2d5: cart_db = {1'b1, 4'd1};   // extra:esalesman (level3)
     default: cart_db = 5'd0;
   endcase
 endfunction

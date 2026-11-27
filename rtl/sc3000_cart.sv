@@ -17,6 +17,15 @@
 //                 0000-7FFF, block from an OUT to E0-FF: bit 7 ? {bit6, bit4:0} : 3Fh;
 //                 32 KB RAM at 8000-BFFF + C000-FFFF
 //   9 MEGACART    Survivors Megacart (4 MB): block = {bit7:6, bit4:0}
+//  10 SEGA        Sega 315-5208 as on Loretta no Shouzou (GearSF7000
+//                 Sega3155208SG1000Mapper): ROM 0000-7FFF fixed, a write to
+//                 FFFF picks the 16 KB page at 8000-BFFF (2 at reset); no
+//                 cartridge RAM, so C000-FFFF stays the console's RAM and the
+//                 FFFF write lands there too
+//
+// cart_ram (OSD Cart RAM, as the SMS core's "SG/SC Cart RAM") overrides the
+// mapper's own RAM: 0 Auto (the mapper's), 1 Off, 2 2 KB at 8000-BFFF
+// (mirrored), 3 16 KB at 8000-BFFF, 4 32 KB at 8000-FFFF (the internal RAM off).
 //
 // ROM storage is outside (BRAM in the sim, SDRAM on hardware): rom_addr is the
 // byte offset in the image, rom_data comes back one clock later.
@@ -26,6 +35,7 @@ module sc3000_cart (
   input               clk,
   input               reset,
   input        [3:0]  mapper,
+  input        [2:0]  cart_ram,     // 0 Auto, 1 Off, 2 2 KB, 3 16 KB, 4 32 KB
   input        [23:0] rom_size,     // image size in bytes (0 = no cartridge)
 
   input        [15:0] a,
@@ -47,7 +57,8 @@ module sc3000_cart (
 );
 
   localparam M_ROM = 4'd0, M_LEVEL3 = 4'd1, M_CASTLE = 4'd2, M_OTHELLO = 4'd3, M_TEREBI = 4'd4,
-             M_DAHJEE_A = 4'd5, M_DAHJEE_B = 4'd6, M_MUSIC = 4'd7, M_MULTI = 4'd8, M_MEGA = 4'd9;
+             M_DAHJEE_A = 4'd5, M_DAHJEE_B = 4'd6, M_MUSIC = 4'd7, M_MULTI = 4'd8, M_MEGA = 4'd9,
+             M_SEGA = 4'd10;
 
   // rom[offset % size] for offset < C000 without a divider: images of 24 KB
   // and more are at least half of the window, so one subtraction does it;
@@ -71,6 +82,14 @@ module sc3000_cart (
     end
   end
   wire is_multi = mapper == M_MULTI || mapper == M_MEGA;
+
+  // Sega 315-5208 page register (FFFF), 16 KB pages at 8000-BFFF
+  reg [7:0] sega_page = 8'd2;
+  always @(posedge clk) begin
+    if (reset) sega_page <= 8'd2;
+    else if (mapper == M_SEGA && wr && a == 16'hFFFF) sega_page <= d_i;
+  end
+  wire [23:0] sega_off = ((a[15] & ~a[14]) ? {2'b00, sega_page, a[13:0]} : {9'd0, a[14:0]}) & pow2_mask;
   wire [23:0] multi_off = {2'b00, block, a[14:0]} & pow2_mask;
 
   // Cartridge RAM (32 KB, BRAM)
@@ -97,13 +116,21 @@ module sc3000_cart (
       end
       default: ;
     endcase
+    case (cart_ram)
+      3'd1: cram_hit = 1'b0;
+      3'd2: begin cram_hit = a[15:14] == 2'b10; cram_a = {4'b0000, a[10:0]}; end
+      3'd3: begin cram_hit = a[15:14] == 2'b10; cram_a = {1'b0, a[13:0]}; end
+      3'd4: begin cram_hit = a[15];             cram_a = a[14:0]; end
+      default: ;
+    endcase
   end
   always @(posedge clk) begin
     if (cram_hit & wr) cram[cram_a] <= d_i;
     cram_q <= cram[cram_a];
   end
 
-  assign ram_sel = (mapper == M_LEVEL3) || (mapper == M_DAHJEE_A) || (mapper == M_DAHJEE_B) ||
+  assign ram_sel = (cart_ram != 3'd0) ? (cart_ram == 3'd4) :
+                   (mapper == M_LEVEL3) || (mapper == M_DAHJEE_A) || (mapper == M_DAHJEE_B) ||
                    (mapper == M_MUSIC) || is_multi;
   assign rom_rd  = rd & ~cram_hit & ~hi & (rom_size != 24'd0) &
                    ~(mapper == M_TEREBI && (a == 16'h8000 || a == 16'hA000));
@@ -123,7 +150,7 @@ module sc3000_cart (
   end
 
   always_comb begin
-    rom_addr = is_multi ? multi_off : rom_off;
+    rom_addr = is_multi ? multi_off : (mapper == M_SEGA) ? sega_off : rom_off;
     if (rom_size == 24'd0)       d_o = 8'hFF;
     else if (cram_hit_q)         d_o = cram_q;
     else if (tv_rd_q[0])         d_o = {7'd0, ~tab_pen};

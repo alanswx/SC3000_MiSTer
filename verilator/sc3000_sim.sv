@@ -61,6 +61,8 @@ module sc3000_sim #(
   output              rec_active,
 
   input               model_sg1000,
+  input               sk1100,          // SG-1000 + SK-1100 keyboard
+  input        [2:0]  cart_ram,        // OSD Cart RAM: 0 Auto, 1 Off, 2 2KB, 3 16KB, 4 32KB
   input               model_omv,       // Othello Multivision (BIOS = dl index 4)
   input        [17:0] omv_keys,
   input               pal,
@@ -224,7 +226,7 @@ module sc3000_sim #(
     .motor_led(fdd_motor));
 
   sc3000_cart cart (
-    .clk(clk), .reset(reset), .mapper(mapper), .rom_size(sf7000_on ? 24'd0 : cart_size),
+    .clk(clk), .reset(reset), .mapper(mapper), .cart_ram(cart_ram), .rom_size(sf7000_on ? 24'd0 : cart_size),
     .a(cart_a), .rd(cart_rd), .wr(cart_wr & ~sf7000_on), .d_i(cart_do), .d_o(rom_cart_di),
     .ram_sel(rom_cart_ram_sel), .io_wr(ext_io_wr & ~sf7000_on),
     .tab_x(tab_x), .tab_y(tab_y), .tab_pen(tab_pen), .rom_addr(rom_addr), .rom_rd(), .rom_data(cart_rom_q));
@@ -232,7 +234,7 @@ module sc3000_sim #(
   sc3000 machine (
     .clk(clk), .reset(reset), .ce_10m7(ce_10m7), .ce_cpu_p(ce_cpu_p), .ce_cpu_n(ce_cpu_n),
     .ce_psg(ce_psg), .turbo(turbo_active),
-    .model_sg1000(model_sg1000), .model_omv(model_omv), .cart_in(cart_size != 24'd0),
+    .model_sg1000(model_sg1000), .sk1100(sk1100), .model_omv(model_omv), .cart_in(cart_size != 24'd0),
     .bios_wr(dl_wr && dl_index == 8'd4), .bios_addr(dl_addr[13:0]), .bios_data(dl_data), .omv_keys(omv_keys),
     .pal(pal), .border(border),
     .cart_a(cart_a), .cart_rd(cart_rd), .cart_wr(cart_wr), .cart_do(cart_do), .cart_di(cart_di),

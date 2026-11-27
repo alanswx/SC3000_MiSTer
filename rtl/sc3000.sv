@@ -44,6 +44,7 @@ module sc3000 (
 
   input               model_sg1000,   // 1 = SG-1000 (1 KB RAM, SG-1000 I/O map, no PPI)
   input               model_omv,      // 1 = Othello Multivision (overrides model_sg1000)
+  input               sk1100,         // SG-1000 with the SK-1100 keyboard: the PPI at DC-DF
   input               cart_in,        // a cartridge is in the slot (OMV: else the BIOS)
   input               bios_wr,        // OMV BIOS download (16 KB)
   input        [13:0] bios_addr,
@@ -156,8 +157,9 @@ module sc3000 (
   wire psg_sel, vdp_sel, ppi_sel, joy_sel, omv_sel;
   assign psg_sel = io & (sg_io ? (a[7:6] == 2'b01) : ~a[7]);
   assign vdp_sel = io & (sg_io ? (a[7:6] == 2'b10) : ~a[6]);
-  assign ppi_sel = io & ~sg_io & ~a[5];
-  assign joy_sel = io &  model_sg1000 & ~model_omv & (a[7:2] == 6'b110111);   // DC-DF
+  wire   sk_on   = sk1100 & model_sg1000 & ~model_omv;
+  assign ppi_sel = io & (sg_io ? (sk_on & (a[7:2] == 6'b110111)) : ~a[5]);     // SK-1100: DC-DF
+  assign joy_sel = io &  model_sg1000 & ~model_omv & ~sk_on & (a[7:2] == 6'b110111);   // DC-DF
   assign omv_sel = io &  model_omv & (a[7:6] == 2'b11);                       // C0-FF
 
   // Internal RAM: 2 KB (SG-1000: 1 KB), mirrored over C000-FFFF -------------

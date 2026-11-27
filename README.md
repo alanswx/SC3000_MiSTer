@@ -23,7 +23,7 @@ SF-7000 disks.
 |---|---|
 | `games/SC3000/boot0.rom` | SF-7000 IPL ROM, 8 KB (MAME `sf7000.zip`: `ipl.rom`, CRC32 d76810b8). Only needed for the SF-7000. |
 | `games/SC3000/boot1.rom` | Othello Multivision BIOS, 16 KB (MAME `omv2000.zip`: `omvbios.bin`, CRC32 c5a67b95). Only needed for the Othello Multivision. |
-| `games/SC3000/` | cartridges (`.sg`, `.sc`, `.bin`, `.rom`), tapes (`.wav`, `.bit`), disks (`.sf7`) |
+| `games/SC3000/` | cartridges (`.sg`, `.sc`, `.bin`, `.rom`, `.sms`), tapes (`.wav`, `.bit`), disks (`.sf7`) |
 
 The SC-3000 and SG-1000 have no ROM of their own: everything starts from a
 cartridge. BASIC is a cartridge too (BASIC Level III is the usual one).
@@ -31,15 +31,17 @@ cartridge. BASIC is a cartridge too (BASIC Level III is the usual one).
 ## OSD
 
 Top page: **Cartridge**, **Tape**, **Tape save**, **SF-7000 disk**, **SF-7000 printer**, **Load ROM** (the
-ROM of the model chosen: the SF-7000 IPL, or the Othello Multivision BIOS), then the Machine, Video, Input and Audio pages. Settings that change
-the machine wait for **Apply and reset** ("Changes pending" shows until then);
-video, input and audio settings act at once.
+ROM of the model chosen: the SF-7000 IPL, or the Othello Multivision BIOS), then the Machine, Video, Input and Audio pages. Only the settings that change
+the machine (Model, Mapper, SF-7000, SK-1100 keyboard, Cart RAM) wait for **Apply and reset** ("Changes pending" shows until then);
+everything else acts at once (Video standard and Border at the next frame).
 
 | Page | Row | |
 |---|---|---|
 | Machine | Model | SC-3000 (default), SG-1000 or Othello Multivision |
 | | Mapper | Auto (default) or a fixed cartridge type |
 | | SF-7000 | Auto: attached when a disk is mounted (default) / On / Off |
+| | SK-1100 keyboard | SG-1000 only: Off (default) / On, the keyboard unit (PPI at DC-DF, joysticks on row 7 as on the SC-3000) |
+| | Cart RAM | Auto (the mapper's own RAM, default) / Off / 2KB or 16KB at 8000-BFFF / 32KB at 8000-FFFF, for programs that need cartridge RAM (as the SMS core's SG/SC Cart RAM) |
 | | Tape speed | 4x (default) or Normal |
 | | Rewind tape, Eject cartridge | buttons |
 | Video | Video standard | NTSC (default) / PAL |
@@ -77,8 +79,11 @@ The mapper is picked automatically: known dumps by CRC32 (MAME's software
 lists), others by the same signature checks MAME uses. Supported: plain ROM
 (up to 48 KB), BASIC Level II / III, The Castle, Othello, Terebi Oekaki
 (the tablet is the mouse; left button = pen), Dahjee type A / B (Taiwanese
-RAM carts), Music Editor, and the SC-3000 Survivors Multicart (2 MB) and
-Megacart (4 MB).
+RAM carts), Music Editor, the SC-3000 Survivors Multicart (2 MB) and
+Megacart (4 MB), and Sega's 315-5208 paging chip as on *Loretta no Shouzou*
+(a 128 KB SC-3000 / SG-1000 game often found as a `.sms` file; any unknown
+image over 64 KB gets this mapper). The Mapper row's Auto is the only way to
+pick the Survivors carts, Music Editor and 315-5208.
 
 ## Tape
 

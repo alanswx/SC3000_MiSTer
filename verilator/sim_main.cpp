@@ -48,6 +48,8 @@ static std::string outdir = "out", png_path, wav_path, trace_path, stop_text, vd
 static int run_frames = 0, every = 0, mapper = -1, trace_from = 0, trace_to = 1 << 30;
 static std::set<int> shots, text_frames;
 static bool tape_log = false, tape_turbo = false;
+static bool sk1100 = false;
+static int cart_ram = 0;
 static bool model_sg1000 = false, pal = false, border = false, text_at_end = false, io_log = false;
 static uint64_t profile_every = 0;
 struct Peek { int frame; unsigned addr, n; };
@@ -388,7 +390,7 @@ static void usage() {
   puts("Vsc3000_sim options:\n"
        "  --cart FILE             cartridge image (.sg .sc .bin .rom)\n"
        "  --mapper NAME           auto (default), rom, level3, castle, othello\n"
-       "                          terebi, dahjee_a, dahjee_b, music, multicart, megacart\n"
+       "                          terebi, dahjee_a, dahjee_b, music, multicart, megacart, sega\n"
        "  --sf7000 IPL            attach the SF-7000 with this IPL ROM (ipl.rom, 8 KB)\n"
        "  --disk FILE             .sf7 disk image in the SF-7000 drive (writes stay in memory)\n"
        "  --disk-out FILE         write the disk image back to FILE at the end\n"
@@ -406,6 +408,8 @@ static void usage() {
        "  --turbo                 OSD Tape speed = 4x (full-rate build only: make full)\n"
        "  --tape-log              log the virtual motor (play/stop) with the tape position\n"
        "  --sg1000                SG-1000 model (1 KB RAM, SG-1000 I/O map, no keyboard)\n"
+       "  --sk1100                with --sg1000: SK-1100 keyboard attached (PPI at DC-DF)\n"
+       "  --cart-ram N            OSD Cart RAM: 0 Auto, 1 Off, 2 2KB, 3 16KB, 4 32KB\n"
        "  --omv BIOS              Othello Multivision FG-2000 with this BIOS (omvbios.bin, 16 KB)\n"
        "  --pad KEYS@FRAME[:N]    OMV keypad: KEYS from 1-9 0 A-H (# = 9, * = 0), held N frames (3)\n"
        "  --paste 'TEXT@F[:HOLD:GAP]' type TEXT through rtl/sc3000_keyboard.sv (PS/2 events, PC layout),\n"
@@ -455,7 +459,7 @@ int main(int argc, char** argv) {
       std::string m = next();
       mapper = m == "auto" ? 15 : m == "rom" ? 0 : m == "level3" ? 1 : m == "castle" ? 2 : m == "othello" ? 3 :
                m == "terebi" ? 4 : m == "dahjee_a" ? 5 : m == "dahjee_b" ? 6 : m == "music" ? 7 :
-               m == "multicart" ? 8 : m == "megacart" ? 9 : -2;
+               m == "multicart" ? 8 : m == "megacart" ? 9 : m == "sega" ? 10 : -2;
       if (mapper == -2) { fprintf(stderr, "unknown mapper %s\n", m.c_str()); return 3; }
     }
     else if (a == "--tape") tape_path = next();
@@ -494,6 +498,8 @@ int main(int argc, char** argv) {
       }
       ser_in.push_back({atoi(v.c_str() + at + 1), d}); }
     else if (a == "--sg1000") model_sg1000 = true;
+    else if (a == "--sk1100") sk1100 = true;
+    else if (a == "--cart-ram") cart_ram = atoi(next());
     else if (a == "--pal") pal = true;
     else if (a == "--border") border = true;
     else if (a == "--frames") run_frames = atoi(next());
@@ -581,7 +587,7 @@ int main(int argc, char** argv) {
   top->prn_img_mounted = 0; top->prn_sd_ack = 0; top->baud = baud_sel; top->uart_rxd = 1;
   uart.setup();
   top->use_ps2 = !paste_reqs.empty(); top->ps2_key = 0;
-  top->model_sg1000 = model_sg1000; top->model_omv = !omv_path.empty(); top->omv_keys = 0; top->pal = pal; top->border = border;
+  top->model_sg1000 = model_sg1000; top->sk1100 = sk1100; top->cart_ram = cart_ram; top->model_omv = !omv_path.empty(); top->omv_keys = 0; top->pal = pal; top->border = border;
   top->tab_x = 128; top->tab_y = 96; top->tab_pen = 0;
   top->reset = 1; top->nmi_key = 0; top->joy1 = 0; top->joy2 = 0; top->tape_rewind = 0; top->tape_turbo = 0; top->sf7000_on = 0; top->sd_ack = 0; top->sd_buff_wr = 0; top->img_mounted = 0;
   for (int w = 0; w < 3; w++) top->key_matrix[w] = 0;

@@ -12,6 +12,9 @@
 //      "annakmn" at 13B3                          -> terebi
 //      "PIANO" / "music" at 0841                  -> music_editor
 //      size 2 MB / 4 MB                           -> multicart / megacart
+//    and one of our own: an image over 64 KB that nothing else claims can't run
+//    as plain ROM, so it gets the Sega 315-5208 page register at FFFF
+//    (Loretta no Shouzou; SMS-style images with an SG-1000 mode)
 // The Dahjee RAM-expansion heuristic (LD (2xxx/Dxxx),A counts) is not done:
 // every known Dahjee dump is in the CRC table.
 //
@@ -99,6 +102,7 @@ module sc3000_detect (
       else if (ok_castle && len >= 25'h1CC3 + 10)  mapper <= 4'd2;
       else if (ok_terebi && len >= 25'h13B3 + 7)   mapper <= 4'd4;
       else if ((ok_piano | ok_music) && len >= 25'h0841 + 5) mapper <= 4'd7;
+      else if (len > 25'h010000)                   mapper <= 4'd10;
       else                                         mapper <= 4'd0;
     end
   end

@@ -34,18 +34,20 @@ reg  [127:0] cfg = 0;          // machine settings, latched at reset (osd-standa
 
 `include "build_id.v"
 // OSD after ~/dev2/osd-standard.md and video-standard.md.
-//   live:  1-2 Aspect ratio, 7-9 Scandoubler Fx, 10-11 Scale, 3 Joysticks swap,
+//   live:  6 Border, 13 Video standard (at the next frame), 1-2 Aspect ratio,
+//          7-9 Scandoubler Fx, 10-11 Scale, 3 Joysticks swap,
 //          19 Tape audio, 22 Keyboard, 24 Tape overlay, 23 Tape speed (taken
 //          when the deck starts, tape-standard rule 1), buttons 18 Eject
 //          cartridge, 17 Rewind tape
-//   reset: 6 Border, 12 Model, 13 Video standard, 16:14 Mapper, 21:20 SF-7000 (cfg)
+//   reset: 26:25 Model, 16:14 Mapper, 21:20 SF-7000, 29:27 Cart RAM,
+//          30 SK-1100 keyboard (cfg)
 // Media: F1 cartridge, F2 tape (SDRAM ch1), S1 Tape save (.bit recorder),
 // S0 SF-7000 disk (.sf7), S2 SF-7000 printer output (a blank file), F0 Load ROM
 // = the SF-7000 IPL (games/SC3000/boot0.rom = MAME sf7000 ipl.rom).
 parameter CONF_STR = {
 	"SC3000;UART9600:4800:2400:1200:600:300;",
 	"-;",
-	"F1,SG SC BINROM,Cartridge;",
+	"F1,SG SC BINROMSMS,Cartridge;",
 	"F2,WAVBIT,Tape;",
 	"S1,BIT,Tape save;",
 	"S0,SF7,SF-7000 disk;",
@@ -63,7 +65,9 @@ parameter CONF_STR = {
 	"P1O[26:25],Model,SC-3000,SG-1000,Othello Multivision;",
 	"P1O[16:14],Mapper,Auto,ROM,BASIC Level 3,The Castle,Othello/BASIC 2,Terebi Oekaki,Dahjee A,Dahjee B;",
 	"H1P1O[21:20],SF-7000,Auto,On,Off;",
-	"h1P1-;",
+	"H2P1O[30],SK-1100 keyboard,Off,On;",
+	"h3P1-;",
+	"P1O[29:27],Cart RAM,Auto,Off,2KB,16KB,32KB;",
 	"P1-;",
 	"P1O[23],Tape speed,4x,Normal;",
 	"P1T[17],Rewind tape;",
@@ -150,6 +154,7 @@ wire  [2:0] sf7_baud = (uart_speed == 0 || uart_speed >= 9600) ? 3'd0 :
                        (uart_speed >= 4800) ? 3'd1 : (uart_speed >= 2400) ? 3'd2 :
                        (uart_speed >= 1200) ? 3'd3 : (uart_speed >= 600)  ? 3'd4 : 3'd5;
 
+wire no_sf, no_sk;   // OSD rows hidden (status_menumask)
 hps_io #(.CONF_STR(CONF_STR), .VDNUM(3)) hps_io
 (
 	.clk_sys(clk_sys),
@@ -159,7 +164,9 @@ hps_io #(.CONF_STR(CONF_STR), .VDNUM(3)) hps_io
 	.status(status),
 	.uart_mode(uart_mode),
 	.uart_speed(uart_speed),
-	.status_menumask({14'd0, ~ipl_loaded | (status[26:25] != 2'd0), pending}),
+	// 1: SF-7000 row hidden (not an SC-3000 with the IPL), 2: SK-1100 row hidden
+	// (not an SG-1000); they share one line, blank (3) when both are hidden
+	.status_menumask({12'd0, no_sf & no_sk, no_sk, no_sf, pending}),
 	.forced_scandoubler(forced_scandoubler),
 	.gamma_bus(gamma_bus),
 
@@ -201,6 +208,8 @@ wire bios_dl      = ioctl_download & ((ioctl_index == 8'h40) | ((ioctl_index == 
 
 reg  ipl_loaded = 0;
 always @(posedge clk_sys) if (ipl_dl & ioctl_wr) ipl_loaded <= 1;
+assign no_sf = ~ipl_loaded | (status[26:25] != 2'd0);
+assign no_sk = status[26:25] != 2'd1;
 
 // SF-7000 disk mounted (S0)
 reg  disk_in = 0;
@@ -219,7 +228,9 @@ always @(posedge clk_sys) disk_reset <= img_mounted[0] & |img_size & (status[21:
 wire reset = RESET | status[0] | buttons[1] | cart_dl | ipl_dl | bios_dl | status[18] | disk_reset | ~pll_locked;
 
 always @(posedge clk_sys) if (reset) cfg <= status;
-wire pending = {status[26:25], status[21:20], status[16:13], status[6]} != {cfg[26:25], cfg[21:20], cfg[16:13], cfg[6]};
+// Only what changes the machine waits for a reset: Model, Mapper, SF-7000,
+// Cart RAM, SK-1100 keyboard.
+wire pending = {status[30:27], status[26:25], status[21:20], status[16:14]} != {cfg[30:27], cfg[26:25], cfg[21:20], cfg[16:14]};
 
 wire       model_sg1000 = cfg[26:25] == 2'd1;
 wire       model_omv    = cfg[26:25] == 2'd2;
@@ -227,7 +238,16 @@ wire       model_omv    = cfg[26:25] == 2'd2;
 reg  sf7000_on = 0;
 always @(posedge clk_sys) if (reset) sf7000_on <= ipl_loaded & (status[26:25] == 2'd0) &
 	((status[21:20] == 2'd1) | ((status[21:20] == 2'd0) & (disk_in | (img_mounted[0] & |img_size))));
-wire       pal          = cfg[13];
+// Video standard and Border act at once, taken at the end of the VDP's vsync:
+// its line counter is then at the first line, inside both the NTSC and the
+// PAL range, so the switch never strands it past the new last line.
+wire       vsync_n;
+reg        pal = 0, border = 0;
+reg        vsync_n_r = 1;
+always @(posedge clk_sys) begin
+	vsync_n_r <= vsync_n;
+	if (reset | (vsync_n & ~vsync_n_r)) {pal, border} <= {status[13], status[6]};
+end
 // OSD Mapper: 0 Auto, 1 ROM, 2 Level 3, 3 Castle, 4 Othello -> sc3000_cart numbering
 wire [3:0] mapper_osd   = (cfg[16:14] == 3'd0) ? 4'd15 : {1'b0, cfg[16:14] - 3'd1};
 
@@ -297,6 +317,7 @@ sc3000_cart cart
 	.clk(clk_sys),
 	.reset(reset),
 	.mapper(mapper),
+	.cart_ram(cfg[29:27]),
 	.rom_size(sf7000_on ? 24'd0 : cart_size),
 	.a(cart_a),
 	.rd(cart_rd),
@@ -562,7 +583,7 @@ omv_keypad omv_keypad
 /////////////////  MACHINE  ///////////////////////
 
 wire  [7:0] R, G, B;
-wire        hsync_n, vsync_n, hblank, vblank;
+wire        hsync_n, hblank, vblank;
 wire signed [10:0] audio;
 
 sc3000 machine
@@ -576,6 +597,7 @@ sc3000 machine
 	.turbo(turbo_active),
 
 	.model_sg1000(model_sg1000),
+	.sk1100(cfg[30]),
 	.model_omv(model_omv),
 	.cart_in(cart_in),
 	.bios_wr(bios_dl & ioctl_wr),
@@ -583,7 +605,7 @@ sc3000 machine
 	.bios_data(ioctl_dout),
 	.omv_keys(omv_keys),
 	.pal(pal),
-	.border(cfg[6]),
+	.border(border),
 
 	.cart_a(cart_a),
 	.cart_rd(cart_rd),
@@ -700,9 +722,9 @@ video_mixer #(.LINE_LENGTH(400), .GAMMA(1)) video_mixer
 wire [1:0] ar = status[2:1];
 reg [11:0] orig_x, orig_y;
 always @(posedge CLK_VIDEO) begin
-	if      (~pal & ~cfg[6]) {orig_x, orig_y} <= {12'd32,   12'd21};
+	if      (~pal & ~border) {orig_x, orig_y} <= {12'd32,   12'd21};
 	else if (~pal)           {orig_x, orig_y} <= {12'd2272, 12'd1687};
-	else if (~cfg[6])        {orig_x, orig_y} <= {12'd3932, 12'd2147};
+	else if (~border)        {orig_x, orig_y} <= {12'd3932, 12'd2147};
 	else                     {orig_x, orig_y} <= {12'd3969, 12'd2971};
 end
 
